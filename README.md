@@ -4,12 +4,14 @@ A simple browser-based 3D game with multiplayer functionality using Three.js and
 
 ## Features
 
+- Main menu to start game
 - Open city with streets, detailed buildings with windows/doors, trees, and grass
-- Third-person character control (WASD move, mouse look)
+- Third-person character control (WASD move, mouse look, RMB+drag rotate camera, Q/E camera rotate)
 - Cars to drive (E to enter/exit, WS gas/brake, AD turn) with windows
-- Random walking NPCs and police (blue, chase if player in car)
-- Shooting: Left click to kill NPCs
-- Basic multiplayer (players visible as models with guns, cars with details)
+- Random walking NPCs and police (blue, chase based on wanted level)
+- Shooting: Left click to kill NPCs, increases wanted level
+- Collision with buildings
+- Multiplayer with chat (players visible as models with guns, position sync)
 - Optional: Custom 3D model for player hero with animations
 
 ## Custom Model Setup

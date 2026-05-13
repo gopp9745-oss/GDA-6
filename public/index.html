@@ -7,11 +7,20 @@
     <style>
         body { margin: 0; overflow: hidden; background: #000; }
         canvas { display: block; }
+        #menu { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; font-family: Arial; z-index: 10; }
+        #menu h1 { font-size: 48px; margin-bottom: 40px; }
+        #menu button { padding: 10px 20px; font-size: 18px; margin: 10px; cursor: pointer; }
         #ui { position: absolute; top: 10px; left: 10px; color: white; font-family: Arial; font-size: 14px; }
+        #chatMessages { max-height: 100px; overflow-y: auto; margin-top: 5px; }
     </style>
 </head>
 <body>
-    <div id="ui">Controls: WASD move, Q/E rotate camera, Mouse look, E enter/exit car, Left click shoot NPCs. Police (blue) chase if in car or wanted.<br>Wanted Level: <span id="wanted">0</span></div>
+    <div id="menu">
+        <h1>ГДА 6</h1>
+        <button id="startBtn">Start Game</button>
+        <button id="settingsBtn">Settings</button>
+    </div>
+    <div id="ui" style="display:none;">Controls: WASD move, Q/E rotate camera, RMB+drag rotate camera, Mouse look, E enter/exit car, Left click shoot NPCs. Police (blue) chase if in car or wanted.<br>Wanted Level: <span id="wanted">0</span><br><input id="chatInput" type="text" placeholder="Chat..." style="width:200px;"><div id="chatMessages"></div></div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -29,6 +38,16 @@
 
         const clock = new THREE.Clock();
         const raycaster = new THREE.Raycaster();
+
+        // Menu
+        document.getElementById('startBtn').addEventListener('click', () => {
+            document.getElementById('menu').style.display = 'none';
+            document.getElementById('ui').style.display = 'block';
+            // Start game
+        });
+        document.getElementById('settingsBtn').addEventListener('click', () => {
+            alert('Settings not implemented yet');
+        });
 
         // Player (load GLTF model or fallback to cylinder)
         let player = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.5, 8), new THREE.MeshBasicMaterial({color: 0xff0000}));
@@ -224,12 +243,18 @@
         let rotationSpeed = 0.02;
         let cameraAngle = 0; // Camera rotation around player
         let wantedLevel = 0;
+        let isRightMouseDown = false;
+        let lastMouseX = 0;
 
         document.addEventListener('keydown', (e) => { keys[e.code] = true; });
         document.addEventListener('keyup', (e) => { keys[e.code] = false; });
         document.addEventListener('mousemove', (e) => {
             mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            if (isRightMouseDown) {
+                cameraAngle += (e.clientX - lastMouseX) * 0.005;
+                lastMouseX = e.clientX;
+            }
         });
         document.addEventListener('pointerlockchange', () => {
             document.pointerLockElement ? document.addEventListener('mousemove', onMouseMove) : document.removeEventListener('mousemove', onMouseMove);
@@ -244,7 +269,18 @@
             if (e.button === 0 && !isInCar) { // Left click to shoot
                 shoot();
             }
+            if (e.button === 2) { // Right click to rotate camera
+                isRightMouseDown = true;
+                lastMouseX = e.clientX;
+                e.preventDefault();
+            }
         });
+        renderer.domElement.addEventListener('mouseup', (e) => {
+            if (e.button === 2) {
+                isRightMouseDown = false;
+            }
+        });
+        renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault()); // Disable context menu
 
         function shoot() {
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
@@ -257,6 +293,23 @@
             }
         }
 
+        function addChatMessage(msg) {
+            const div = document.getElementById('chatMessages');
+            div.innerHTML += '<div>' + msg + '</div>';
+            div.scrollTop = div.scrollHeight;
+        }
+
+        document.getElementById('chatInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const msg = e.target.value;
+                if (msg.trim()) {
+                    socket.emit('chatMessage', msg);
+                    addChatMessage('You: ' + msg);
+                    e.target.value = '';
+                }
+            }
+        });
+
         // Socket events
         socket.on('init', (players) => {
             Object.keys(players).forEach(id => {
@@ -268,6 +321,7 @@
 
         socket.on('playerJoined', (playerData) => {
             createOtherPlayer(playerData.id, playerData);
+            addChatMessage(`Player ${playerData.id} joined`);
         });
 
         socket.on('playerMoved', (data) => {
@@ -281,6 +335,11 @@
                 scene.remove(otherPlayers[id]);
                 delete otherPlayers[id];
             }
+            addChatMessage(`Player ${id} left`);
+        });
+
+        socket.on('chatMessage', (data) => {
+            addChatMessage(`${data.id}: ${data.message}`);
         });
 
         function createOtherPlayer(id, data) {
