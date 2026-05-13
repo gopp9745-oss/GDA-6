@@ -4,7 +4,7 @@ A simple browser-based 3D game with multiplayer functionality using Three.js and
 
 ## Features
 
-- Main menu to start game
+- Main menu: Choose Single Player or Multiplayer (enter nickname for multiplayer)
 - Open city with streets, detailed buildings with windows/doors, trees, and grass
 - Third-person character control (WASD move, mouse look, RMB+drag rotate camera, Q/E camera rotate)
 - Cars to drive (E to enter/exit, WS gas/brake, AD turn) with windows

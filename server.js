@@ -27,7 +27,8 @@ io.on('connection', (socket) => {
     id: socket.id,
     position: {x: Math.random() * 100 - 50, y: 0, z: Math.random() * 100 - 50},
     state: 'pedestrian',
-    carId: null
+    carId: null,
+    nickname: 'Player'
   };
 
   // Send current players to new player
@@ -41,12 +42,13 @@ io.on('connection', (socket) => {
       players[socket.id].position = data.position;
       players[socket.id].state = data.state;
       players[socket.id].carId = data.carId;
+      players[socket.id].nickname = data.nickname;
       socket.broadcast.emit('playerMoved', {id: socket.id, ...data});
     }
   });
 
   socket.on('chatMessage', (message) => {
-    io.emit('chatMessage', {id: socket.id, message: message});
+    io.emit('chatMessage', {id: socket.id, message: message, nickname: players[socket.id].nickname});
   });
 
   socket.on('disconnect', () => {
