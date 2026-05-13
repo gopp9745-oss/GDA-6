@@ -11,7 +11,7 @@
     </style>
 </head>
 <body>
-    <div id="ui">Controls: WASD move, Mouse look, E enter/exit car</div>
+    <div id="ui">Controls: WASD move, Mouse look, E enter/exit car, Left click shoot NPCs. Police (blue) chase if in car.</div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -28,6 +28,7 @@
         document.body.appendChild(renderer.domElement);
 
         const clock = new THREE.Clock();
+        const raycaster = new THREE.Raycaster();
 
         // Player (load GLTF model or fallback to cylinder)
         let player = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.5, 8), new THREE.MeshBasicMaterial({color: 0xff0000}));
@@ -42,9 +43,9 @@
                 console.log('Model loaded successfully');
                 scene.remove(player);
                 player = gltf.scene;
-                player.position.set(0, 0, 0); // Adjust position if needed
+                player.position.set(0, 1.5, 0); // Adjust position to stand on ground
                 player.scale.set(1, 1, 1); // Adjust scale if needed
-                player.add(gun); // Reattach gun to new model
+                player.add(gunGroup); // Reattach gun to new model
                 scene.add(player);
 
                 // If animations exist, set up mixer
@@ -63,12 +64,17 @@
             }
         );
 
-        // Player gun (attach to player)
-        const gunGeometry = new THREE.BoxGeometry(0.2, 0.1, 0.5);
-        const gunMaterial = new THREE.MeshBasicMaterial({color: 0x000000});
-        const gun = new THREE.Mesh(gunGeometry, gunMaterial);
-        gun.position.set(0.3, 0.5, 0.5); // Adjust position relative to model
-        player.add(gun);
+        // Player gun (improved model)
+        const gunGroup = new THREE.Group();
+        const gunBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.6, 8), new THREE.MeshBasicMaterial({color: 0x333333}));
+        gunBarrel.rotation.z = Math.PI / 2;
+        gunBarrel.position.set(0.3, 0, 0);
+        gunGroup.add(gunBarrel);
+        const gunHandle = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.2, 0.1), new THREE.MeshBasicMaterial({color: 0x8B4513}));
+        gunHandle.position.set(0, -0.1, 0);
+        gunGroup.add(gunHandle);
+        gunGroup.position.set(0.3, 0.5, 0.5); // Adjust position relative to model
+        player.add(gunGroup);
 
         // Camera follow player
         camera.position.set(0, 5, 10);
@@ -83,11 +89,27 @@
 
         // Buildings
         for (let i = 0; i < 20; i++) {
-            const buildingGeometry = new THREE.BoxGeometry(5, Math.random() * 10 + 5, 5);
+            const height = Math.random() * 10 + 5;
+            const buildingGeometry = new THREE.BoxGeometry(5, height, 5);
             const buildingMaterial = new THREE.MeshBasicMaterial({color: Math.random() * 0xffffff});
             const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
-            building.position.set((Math.random() - 0.5) * 100, buildingGeometry.parameters.height / 2, (Math.random() - 0.5) * 100);
+            building.position.set((Math.random() - 0.5) * 100, height / 2, (Math.random() - 0.5) * 100);
             scene.add(building);
+
+            // Windows
+            const windowMaterial = new THREE.MeshBasicMaterial({color: 0xffff00, transparent: true, opacity: 0.8});
+            for (let w = 0; w < 4; w++) {
+                const windowGeom = new THREE.PlaneGeometry(0.8, 0.8);
+                const windowMesh = new THREE.Mesh(windowGeom, windowMaterial);
+                windowMesh.position.set((Math.random() - 0.5) * 4, Math.random() * height, 2.51);
+                building.add(windowMesh);
+            }
+
+            // Door
+            const doorMaterial = new THREE.MeshBasicMaterial({color: 0x8B4513});
+            const door = new THREE.Mesh(new THREE.PlaneGeometry(1, 2), doorMaterial);
+            door.position.set(0, 1, 2.51);
+            building.add(door);
         }
 
         // Trees
@@ -116,6 +138,23 @@
             const carBody = new THREE.Mesh(carBodyGeometry, carBodyMaterial);
             carGroup.add(carBody);
 
+            // Windows
+            const windowMaterial = new THREE.MeshBasicMaterial({color: 0x87ceeb, transparent: true, opacity: 0.3});
+            const frontWindow = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.8), windowMaterial);
+            frontWindow.position.set(0, 0.4, 1);
+            carGroup.add(frontWindow);
+            const backWindow = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.8), windowMaterial);
+            backWindow.position.set(0, 0.4, -1);
+            carGroup.add(backWindow);
+            const leftWindow = new THREE.Mesh(new THREE.PlaneGeometry(2.5, 0.8), windowMaterial);
+            leftWindow.rotation.y = Math.PI / 2;
+            leftWindow.position.set(-2, 0.4, 0);
+            carGroup.add(leftWindow);
+            const rightWindow = new THREE.Mesh(new THREE.PlaneGeometry(2.5, 0.8), windowMaterial);
+            rightWindow.rotation.y = -Math.PI / 2;
+            rightWindow.position.set(2, 0.4, 0);
+            carGroup.add(rightWindow);
+
             // Wheels
             const wheelGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 8);
             const wheelMaterial = new THREE.MeshBasicMaterial({color: 0x333333});
@@ -135,21 +174,27 @@
             cars.push(carGroup);
         }
 
-        // NPCs (capsules with guns)
+        // NPCs (capsules with guns, some police)
         const npcs = [];
         for (let i = 0; i < 20; i++) {
+            const isPolice = i < 5; // First 5 are police
             const npcGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1.5, 8);
-            const npcMaterial = new THREE.MeshBasicMaterial({color: 0xffff00});
+            const npcMaterial = new THREE.MeshBasicMaterial({color: isPolice ? 0x0000ff : 0xffff00});
             const npc = new THREE.Mesh(npcGeometry, npcMaterial);
             npc.position.set((Math.random() - 0.5) * 100, 1.5, (Math.random() - 0.5) * 100);
-            npc.userData = {direction: new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize()};
+            npc.userData = {direction: new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize(), type: isPolice ? 'police' : 'civilian'};
 
             // NPC gun
-            const npcGunGeometry = new THREE.BoxGeometry(0.2, 0.1, 0.5);
-            const npcGunMaterial = new THREE.MeshBasicMaterial({color: 0x000000});
-            const npcGun = new THREE.Mesh(npcGunGeometry, npcGunMaterial);
-            npcGun.position.set(0.3, 0.5, 0.5);
-            npc.add(npcGun);
+            const npcGunGroup = new THREE.Group();
+            const npcGunBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.6, 8), new THREE.MeshBasicMaterial({color: 0x333333}));
+            npcGunBarrel.rotation.z = Math.PI / 2;
+            npcGunBarrel.position.set(0.3, 0, 0);
+            npcGunGroup.add(npcGunBarrel);
+            const npcGunHandle = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.2, 0.1), new THREE.MeshBasicMaterial({color: 0x8B4513}));
+            npcGunHandle.position.set(0, -0.1, 0);
+            npcGunGroup.add(npcGunHandle);
+            npcGunGroup.position.set(0.3, 0.5, 0.5);
+            npc.add(npcGunGroup);
 
             scene.add(npc);
             npcs.push(npc);
@@ -182,6 +227,21 @@
         renderer.domElement.addEventListener('click', () => {
             renderer.domElement.requestPointerLock();
         });
+        renderer.domElement.addEventListener('mousedown', (e) => {
+            if (e.button === 0 && !isInCar) { // Left click to shoot
+                shoot();
+            }
+        });
+
+        function shoot() {
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const intersects = raycaster.intersectObjects(npcs);
+            if (intersects.length > 0) {
+                const hitNpc = intersects[0].object;
+                scene.remove(hitNpc);
+                npcs.splice(npcs.indexOf(hitNpc), 1);
+            }
+        }
 
         // Socket events
         socket.on('init', (players) => {
@@ -289,9 +349,16 @@
 
         function updateNPCs() {
             npcs.forEach(npc => {
-                npc.position.add(npc.userData.direction.clone().multiplyScalar(0.05));
-                if (Math.random() < 0.01) {
-                    npc.userData.direction.set(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
+                if (npc.userData.type === 'police' && isInCar) {
+                    // Police chase player if in car
+                    const direction = new THREE.Vector3().subVectors(player.position, npc.position).normalize();
+                    npc.position.add(direction.multiplyScalar(0.03));
+                } else {
+                    // Random walk
+                    npc.position.add(npc.userData.direction.clone().multiplyScalar(0.05));
+                    if (Math.random() < 0.01) {
+                        npc.userData.direction.set(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
+                    }
                 }
             });
         }
