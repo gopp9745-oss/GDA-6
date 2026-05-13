@@ -43,6 +43,8 @@
 
         let isMultiplayer = false;
         let nickname = 'Player';
+        let gameStarted = false;
+        let socket;
 
         // Menu
         document.getElementById('singleBtn').addEventListener('click', () => {
@@ -490,7 +492,7 @@
         }
 
         function sendPosition() {
-            if (!isMultiplayer) return;
+            if (!isMultiplayer || !socket) return;
             const pos = isInCar ? currentCar.position : player.position;
             socket.emit('updatePosition', {
                 position: pos,
@@ -499,8 +501,6 @@
                 nickname: nickname
             });
         }
-
-        let gameStarted = false;
 
         function startGame() {
             gameStarted = true;
@@ -511,6 +511,8 @@
             }
             // Ensure canvas is visible
             renderer.domElement.style.display = 'block';
+            // Start sending position
+
         }
 
         function animate() {
