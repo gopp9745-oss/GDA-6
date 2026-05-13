@@ -112,34 +112,10 @@
         player.position.set(0, 1.5, 0);
         scene.add(player);
 
-        let mixer;
-        const loader = new THREE.GLTFLoader();
-        loader.load(
-            'models/hero.glb', // Path to your GLTF model
-            (gltf) => {
-                console.log('Model loaded successfully');
-                scene.remove(player);
-                player = gltf.scene;
-                player.position.set(0, 1.5, 0); // Adjust position to stand on ground
-                player.scale.set(1, 1, 1); // Adjust scale if needed
-                player.add(gunGroup); // Reattach gun to new model
-                scene.add(player);
-
-                // If animations exist, set up mixer
-                if (gltf.animations.length > 0) {
-                    mixer = new THREE.AnimationMixer(player);
-                    const action = mixer.clipAction(gltf.animations[0]); // Play first animation or choose specific
-                    action.play();
-                }
-            },
-            (progress) => {
-                console.log('Loading progress:', progress);
-            },
-            (error) => {
-                console.error('Error loading model:', error);
-                // Fallback already set, gun already attached
-            }
-        );
+        // Temporarily disable GLTF to fix black screen
+        // let mixer;
+        // const loader = new THREE.GLTFLoader();
+        // loader.load(...);
 
         // Player gun (improved model)
         const gunGroup = new THREE.Group();
