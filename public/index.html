@@ -38,39 +38,7 @@
         // Start sending position (dummy for single)
         setInterval(sendPosition, 50);
 
-        function setupSocket() {
-            // Socket events
-            socket.on('init', (players) => {
-                Object.keys(players).forEach(id => {
-                    if (id !== socket.id) {
-                        createOtherPlayer(id, players[id]);
-                    }
-                });
-            });
 
-            socket.on('playerJoined', (playerData) => {
-                createOtherPlayer(playerData.id, playerData);
-                addChatMessage(`${playerData.nickname || 'Player'} joined`);
-            });
-
-            socket.on('playerMoved', (data) => {
-                if (otherPlayers[data.id]) {
-                    otherPlayers[data.id].targetPosition.copy(data.position);
-                }
-            });
-
-            socket.on('playerLeft', (id) => {
-                if (otherPlayers[id]) {
-                    scene.remove(otherPlayers[id]);
-                    delete otherPlayers[id];
-                }
-                addChatMessage(`${id} left`);
-            });
-
-            socket.on('chatMessage', (data) => {
-                addChatMessage(`${data.nickname || 'Player'}: ${data.message}`);
-            });
-        }
 
         // Player (load GLTF model or fallback to cylinder)
         let player = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.5, 8), new THREE.MeshBasicMaterial({color: 0xff0000}));
@@ -449,13 +417,7 @@
             // Dummy for single player
         }
 
-        function startGame() {
-            gameStarted = true;
-            console.log('Game started, multiplayer:', isMultiplayer);
-            if (isMultiplayer) {
-                socket = io(window.location.origin);
-                setupSocket();
-            }
+
             // Ensure canvas is visible
             renderer.domElement.style.display = 'block';
             // Start sending position
