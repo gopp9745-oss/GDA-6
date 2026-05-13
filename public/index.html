@@ -11,7 +11,7 @@
     </style>
 </head>
 <body>
-    <div id="ui">Controls: WASD move, Mouse look, E enter/exit car, Left click shoot NPCs. Police (blue) chase if in car.</div>
+    <div id="ui">Controls: WASD move, Q/E rotate camera, Mouse look, E enter/exit car, Left click shoot NPCs. Police (blue) chase if in car or wanted.<br>Wanted Level: <span id="wanted">0</span></div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -88,6 +88,7 @@
         scene.add(ground);
 
         // Buildings
+        const buildings = [];
         for (let i = 0; i < 20; i++) {
             const height = Math.random() * 10 + 5;
             const buildingGeometry = new THREE.BoxGeometry(5, height, 5);
@@ -95,17 +96,27 @@
             const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
             building.position.set((Math.random() - 0.5) * 100, height / 2, (Math.random() - 0.5) * 100);
             scene.add(building);
+            buildings.push(building);
 
-            // Windows
+            // Windows on all sides
             const windowMaterial = new THREE.MeshBasicMaterial({color: 0xffff00, transparent: true, opacity: 0.8});
-            for (let w = 0; w < 4; w++) {
-                const windowGeom = new THREE.PlaneGeometry(0.8, 0.8);
-                const windowMesh = new THREE.Mesh(windowGeom, windowMaterial);
-                windowMesh.position.set((Math.random() - 0.5) * 4, Math.random() * height, 2.51);
-                building.add(windowMesh);
-            }
+            const sides = [
+                {pos: [0, 0, 2.51], rot: [0, 0, 0]}, // front
+                {pos: [0, 0, -2.51], rot: [0, Math.PI, 0]}, // back
+                {pos: [-2.51, 0, 0], rot: [0, Math.PI / 2, 0]}, // left
+                {pos: [2.51, 0, 0], rot: [0, -Math.PI / 2, 0]} // right
+            ];
+            sides.forEach(side => {
+                for (let w = 0; w < 2; w++) {
+                    const windowGeom = new THREE.PlaneGeometry(0.8, 0.8);
+                    const windowMesh = new THREE.Mesh(windowGeom, windowMaterial);
+                    windowMesh.position.set(side.pos[0] + (Math.random() - 0.5) * 1, Math.random() * height * 0.8 + height * 0.1, side.pos[2]);
+                    windowMesh.rotation.set(side.rot[0], side.rot[1], side.rot[2]);
+                    building.add(windowMesh);
+                }
+            });
 
-            // Door
+            // Door on front
             const doorMaterial = new THREE.MeshBasicMaterial({color: 0x8B4513});
             const door = new THREE.Mesh(new THREE.PlaneGeometry(1, 2), doorMaterial);
             door.position.set(0, 1, 2.51);
@@ -211,6 +222,8 @@
         let playerSpeed = 0.1;
         let carSpeed = 0.2;
         let rotationSpeed = 0.02;
+        let cameraAngle = 0; // Camera rotation around player
+        let wantedLevel = 0;
 
         document.addEventListener('keydown', (e) => { keys[e.code] = true; });
         document.addEventListener('keyup', (e) => { keys[e.code] = false; });
@@ -240,6 +253,7 @@
                 const hitNpc = intersects[0].object;
                 scene.remove(hitNpc);
                 npcs.splice(npcs.indexOf(hitNpc), 1);
+                wantedLevel += 1; // Increase wanted level
             }
         }
 
@@ -297,11 +311,19 @@
 
                 const direction = new THREE.Vector3(moveX, 0, moveZ).normalize();
                 if (direction.length() > 0) {
-                    player.position.add(direction.multiplyScalar(playerSpeed));
+                    const newPos = player.position.clone().add(direction.multiplyScalar(playerSpeed));
+                    const collision = buildings.some(b => newPos.distanceTo(b.position) < 3);
+                    if (!collision) {
+                        player.position.copy(newPos);
+                    }
                 }
 
-                camera.position.x = player.position.x;
-                camera.position.z = player.position.z + 10;
+                // Camera rotation
+                if (keys.KeyQ) cameraAngle -= 0.02;
+                if (keys.KeyE) cameraAngle += 0.02;
+
+                camera.position.x = player.position.x + Math.sin(cameraAngle) * 10;
+                camera.position.z = player.position.z + Math.cos(cameraAngle) * 10;
                 camera.position.y = 5;
                 camera.lookAt(player.position.x, player.position.y, player.position.z);
 
@@ -328,7 +350,11 @@
 
                 currentCar.rotation.y += rotateY * rotationSpeed;
                 const direction = new THREE.Vector3(0, 0, moveZ).applyQuaternion(currentCar.quaternion);
-                currentCar.position.add(direction.multiplyScalar(carSpeed));
+                const newPos = currentCar.position.clone().add(direction.multiplyScalar(carSpeed));
+                const collision = buildings.some(b => newPos.distanceTo(b.position) < 4);
+                if (!collision) {
+                    currentCar.position.copy(newPos);
+                }
 
                 camera.position.x = currentCar.position.x - Math.sin(currentCar.rotation.y) * 10;
                 camera.position.z = currentCar.position.z - Math.cos(currentCar.rotation.y) * 10;
@@ -349,10 +375,11 @@
 
         function updateNPCs() {
             npcs.forEach(npc => {
-                if (npc.userData.type === 'police' && isInCar) {
-                    // Police chase player if in car
-                    const direction = new THREE.Vector3().subVectors(player.position, npc.position).normalize();
-                    npc.position.add(direction.multiplyScalar(0.03));
+                if (npc.userData.type === 'police' && (isInCar || wantedLevel > 0)) {
+                    // Police chase player if in car or wanted
+                    const targetPos = isInCar ? currentCar.position : player.position;
+                    const direction = new THREE.Vector3().subVectors(targetPos, npc.position).normalize();
+                    npc.position.add(direction.multiplyScalar(0.03 + wantedLevel * 0.01));
                 } else {
                     // Random walk
                     npc.position.add(npc.userData.direction.clone().multiplyScalar(0.05));
@@ -385,6 +412,7 @@
             updatePlayer();
             updateNPCs();
             updateOtherPlayers();
+            document.getElementById('wanted').textContent = wantedLevel;
             renderer.render(scene, camera);
         }
         animate();
