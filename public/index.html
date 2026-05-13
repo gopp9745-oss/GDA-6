@@ -67,11 +67,16 @@
         });
 
         function startGame() {
+            gameStarted = true;
+            console.log('Game started, multiplayer:', isMultiplayer);
             if (isMultiplayer) {
                 socket = io(window.location.origin);
                 setupSocket();
             }
-            // Game already initialized
+            // Ensure canvas is visible
+            renderer.domElement.style.display = 'block';
+            // Start sending position
+            setInterval(sendPosition, 50);
         }
 
         function setupSocket() {
