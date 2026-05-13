@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ГДА 6 - Parody Game</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+        #ui { position: absolute; top: 10px; left: 10px; color: white; font-family: Arial; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div id="ui">Controls: WASD move, Mouse look, E enter/exit car</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        // Socket.io
+        const socket = io(window.location.origin);
+
+        // Three.js setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87ceeb); // Sky blue
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const clock = new THREE.Clock();
+
+        // Player (load GLTF model or fallback to cylinder)
+        let player = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.5, 8), new THREE.MeshBasicMaterial({color: 0xff0000}));
+        player.position.set(0, 1.5, 0);
+        scene.add(player);
+
+        let mixer;
+        const loader = new THREE.GLTFLoader();
+        loader.load(
+            'models/hero.glb', // Path to your GLTF model
+            (gltf) => {
+                console.log('Model loaded successfully');
+                scene.remove(player);
+                player = gltf.scene;
+                player.position.set(0, 0, 0); // Adjust position if needed
+                player.scale.set(1, 1, 1); // Adjust scale if needed
+                player.add(gun); // Reattach gun to new model
+                scene.add(player);
+
+                // If animations exist, set up mixer
+                if (gltf.animations.length > 0) {
+                    mixer = new THREE.AnimationMixer(player);
+                    const action = mixer.clipAction(gltf.animations[0]); // Play first animation or choose specific
+                    action.play();
+                }
+            },
+            (progress) => {
+                console.log('Loading progress:', progress);
+            },
+            (error) => {
+                console.error('Error loading model:', error);
+                // Fallback already set, gun already attached
+            }
+        );
+
+        // Player gun (attach to player)
+        const gunGeometry = new THREE.BoxGeometry(0.2, 0.1, 0.5);
+        const gunMaterial = new THREE.MeshBasicMaterial({color: 0x000000});
+        const gun = new THREE.Mesh(gunGeometry, gunMaterial);
+        gun.position.set(0.3, 0.5, 0.5); // Adjust position relative to model
+        player.add(gun);
+
+        // Camera follow player
+        camera.position.set(0, 5, 10);
+        camera.lookAt(player.position);
+
+        // City: Streets and buildings
+        const groundGeometry = new THREE.PlaneGeometry(200, 200);
+        const groundMaterial = new THREE.MeshBasicMaterial({color: 0x333333});
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        scene.add(ground);
+
+        // Buildings
+        for (let i = 0; i < 20; i++) {
+            const buildingGeometry = new THREE.BoxGeometry(5, Math.random() * 10 + 5, 5);
+            const buildingMaterial = new THREE.MeshBasicMaterial({color: Math.random() * 0xffffff});
+            const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
+            building.position.set((Math.random() - 0.5) * 100, buildingGeometry.parameters.height / 2, (Math.random() - 0.5) * 100);
+            scene.add(building);
+        }
+
+        // Trees
+        for (let i = 0; i < 50; i++) {
+            const treeGeometry = new THREE.CylinderGeometry(0.5, 0.5, 3);
+            const treeMaterial = new THREE.MeshBasicMaterial({color: 0x228b22});
+            const tree = new THREE.Mesh(treeGeometry, treeMaterial);
+            tree.position.set((Math.random() - 0.5) * 100, 1.5, (Math.random() - 0.5) * 100);
+            scene.add(tree);
+        }
+
+        // Cars (box + wheels)
+        const cars = [];
+        const carModels = [
+            {name: 'Шкода 3000', color: 0xff0000},
+            {name: 'Лада Калина', color: 0x0000ff},
+            {name: 'Волга Газ', color: 0x00ff00}
+        ];
+        for (let i = 0; i < 10; i++) {
+            const model = carModels[Math.floor(Math.random() * carModels.length)];
+            const carGroup = new THREE.Group();
+
+            // Car body
+            const carBodyGeometry = new THREE.BoxGeometry(4, 1, 2);
+            const carBodyMaterial = new THREE.MeshBasicMaterial({color: model.color});
+            const carBody = new THREE.Mesh(carBodyGeometry, carBodyMaterial);
+            carGroup.add(carBody);
+
+            // Wheels
+            const wheelGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 8);
+            const wheelMaterial = new THREE.MeshBasicMaterial({color: 0x333333});
+            const wheelPositions = [
+                [-1.5, -0.5, 1], [1.5, -0.5, 1], [-1.5, -0.5, -1], [1.5, -0.5, -1]
+            ];
+            wheelPositions.forEach(pos => {
+                const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+                wheel.position.set(pos[0], pos[1], pos[2]);
+                wheel.rotation.z = Math.PI / 2;
+                carGroup.add(wheel);
+            });
+
+            carGroup.position.set((Math.random() - 0.5) * 100, 0.5, (Math.random() - 0.5) * 100);
+            carGroup.userData = {occupied: false, model: model.name};
+            scene.add(carGroup);
+            cars.push(carGroup);
+        }
+
+        // NPCs (capsules with guns)
+        const npcs = [];
+        for (let i = 0; i < 20; i++) {
+            const npcGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1.5, 8);
+            const npcMaterial = new THREE.MeshBasicMaterial({color: 0xffff00});
+            const npc = new THREE.Mesh(npcGeometry, npcMaterial);
+            npc.position.set((Math.random() - 0.5) * 100, 1.5, (Math.random() - 0.5) * 100);
+            npc.userData = {direction: new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize()};
+
+            // NPC gun
+            const npcGunGeometry = new THREE.BoxGeometry(0.2, 0.1, 0.5);
+            const npcGunMaterial = new THREE.MeshBasicMaterial({color: 0x000000});
+            const npcGun = new THREE.Mesh(npcGunGeometry, npcGunMaterial);
+            npcGun.position.set(0.3, 0.5, 0.5);
+            npc.add(npcGun);
+
+            scene.add(npc);
+            npcs.push(npc);
+        }
+
+        // Other players
+        const otherPlayers = {};
+
+        // Controls
+        let keys = {};
+        let mouse = {x: 0, y: 0};
+        let isInCar = false;
+        let currentCar = null;
+        let playerSpeed = 0.1;
+        let carSpeed = 0.2;
+        let rotationSpeed = 0.02;
+
+        document.addEventListener('keydown', (e) => { keys[e.code] = true; });
+        document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+        document.addEventListener('mousemove', (e) => {
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        });
+        document.addEventListener('pointerlockchange', () => {
+            document.pointerLockElement ? document.addEventListener('mousemove', onMouseMove) : document.removeEventListener('mousemove', onMouseMove);
+        });
+        function onMouseMove(e) {
+            player.rotation.y -= e.movementX * 0.002;
+        }
+        renderer.domElement.addEventListener('click', () => {
+            renderer.domElement.requestPointerLock();
+        });
+
+        // Socket events
+        socket.on('init', (players) => {
+            Object.keys(players).forEach(id => {
+                if (id !== socket.id) {
+                    createOtherPlayer(id, players[id]);
+                }
+            });
+        });
+
+        socket.on('playerJoined', (playerData) => {
+            createOtherPlayer(playerData.id, playerData);
+        });
+
+        socket.on('playerMoved', (data) => {
+            if (otherPlayers[data.id]) {
+                otherPlayers[data.id].targetPosition.copy(data.position);
+            }
+        });
+
+        socket.on('playerLeft', (id) => {
+            if (otherPlayers[id]) {
+                scene.remove(otherPlayers[id]);
+                delete otherPlayers[id];
+            }
+        });
+
+        function createOtherPlayer(id, data) {
+            const geometry = new THREE.CylinderGeometry(0.5, 0.5, 1.5, 8);
+            const material = new THREE.MeshBasicMaterial({color: Math.random() * 0xffffff});
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.copy(data.position);
+            mesh.targetPosition = new THREE.Vector3().copy(data.position);
+
+            // Other player gun
+            const otherGunGeometry = new THREE.BoxGeometry(0.2, 0.1, 0.5);
+            const otherGunMaterial = new THREE.MeshBasicMaterial({color: 0x000000});
+            const otherGun = new THREE.Mesh(otherGunGeometry, otherGunMaterial);
+            otherGun.position.set(0.3, 0.5, 0.5);
+            mesh.add(otherGun);
+
+            scene.add(mesh);
+            otherPlayers[id] = mesh;
+        }
+
+        function updatePlayer() {
+            if (!isInCar) {
+                let moveX = 0, moveZ = 0;
+                if (keys.KeyW) moveZ -= 1;
+                if (keys.KeyS) moveZ += 1;
+                if (keys.KeyA) moveX -= 1;
+                if (keys.KeyD) moveX += 1;
+
+                const direction = new THREE.Vector3(moveX, 0, moveZ).normalize();
+                if (direction.length() > 0) {
+                    player.position.add(direction.multiplyScalar(playerSpeed));
+                }
+
+                camera.position.x = player.position.x;
+                camera.position.z = player.position.z + 10;
+                camera.position.y = 5;
+                camera.lookAt(player.position.x, player.position.y, player.position.z);
+
+                // Check for entering car
+                if (keys.KeyE) {
+                    for (let car of cars) {
+                        if (!car.userData.occupied && player.position.distanceTo(car.position) < 5) {
+                            isInCar = true;
+                            currentCar = car;
+                            car.userData.occupied = true;
+                            player.visible = false;
+                            camera.position.set(car.position.x, car.position.y + 5, car.position.z + 10);
+                            camera.lookAt(car.position);
+                            break;
+                        }
+                    }
+                }
+            } else {
+                let moveZ = 0, rotateY = 0;
+                if (keys.KeyW) moveZ -= 1;
+                if (keys.KeyS) moveZ += 1;
+                if (keys.KeyA) rotateY += 1;
+                if (keys.KeyD) rotateY -= 1;
+
+                currentCar.rotation.y += rotateY * rotationSpeed;
+                const direction = new THREE.Vector3(0, 0, moveZ).applyQuaternion(currentCar.quaternion);
+                currentCar.position.add(direction.multiplyScalar(carSpeed));
+
+                camera.position.x = currentCar.position.x - Math.sin(currentCar.rotation.y) * 10;
+                camera.position.z = currentCar.position.z - Math.cos(currentCar.rotation.y) * 10;
+                camera.lookAt(currentCar.position);
+
+                // Exit car
+                if (keys.KeyE) {
+                    isInCar = false;
+                    currentCar.userData.occupied = false;
+                    player.position.copy(currentCar.position);
+                    player.visible = true;
+                    currentCar = null;
+                    camera.position.set(player.position.x, 5, player.position.z + 10);
+                    camera.lookAt(player.position.x, player.position.y, player.position.z);
+                }
+            }
+        }
+
+        function updateNPCs() {
+            npcs.forEach(npc => {
+                npc.position.add(npc.userData.direction.clone().multiplyScalar(0.05));
+                if (Math.random() < 0.01) {
+                    npc.userData.direction.set(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
+                }
+            });
+        }
+
+        function updateOtherPlayers() {
+            Object.values(otherPlayers).forEach(playerMesh => {
+                playerMesh.position.lerp(playerMesh.targetPosition, 0.1);
+            });
+        }
+
+        function sendPosition() {
+            const pos = isInCar ? currentCar.position : player.position;
+            socket.emit('updatePosition', {
+                position: pos,
+                state: isInCar ? 'inCar' : 'pedestrian',
+                carId: currentCar ? cars.indexOf(currentCar) : null
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            if (mixer) mixer.update(delta);
+            updatePlayer();
+            updateNPCs();
+            updateOtherPlayers();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        setInterval(sendPosition, 50);
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
