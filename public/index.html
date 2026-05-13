@@ -15,17 +15,7 @@
     </style>
 </head>
 <body>
-    <div id="menu">
-        <h1>ГДА 6</h1>
-        <button id="singleBtn">Single Player</button>
-        <button id="multiBtn">Multiplayer</button>
-        <div id="multiOptions" style="display:none;">
-            <input id="nickname" type="text" placeholder="Enter nickname" maxlength="20">
-            <button id="startMultiBtn">Start Multiplayer</button>
-        </div>
-        <button id="settingsBtn">Settings</button>
-    </div>
-    <div id="ui" style="display:none;">Controls: WASD move, Q/E rotate camera, RMB+drag rotate camera, Mouse look, E enter/exit car, Left click shoot NPCs. Police (blue) chase if in car or wanted.<br>Wanted Level: <span id="wanted">0</span><br><input id="chatInput" type="text" placeholder="Chat..." style="width:200px;"><div id="chatMessages"></div></div>
+    <div id="ui">Controls: WASD move, Q/E rotate camera, RMB+drag rotate camera, Mouse look, E enter/exit car, Left click shoot NPCs. Police (blue) chase if in car or wanted.<br>Wanted Level: <span id="wanted">0</span></div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <script>
@@ -40,44 +30,14 @@
         const clock = new THREE.Clock();
         const raycaster = new THREE.Raycaster();
 
-        let isMultiplayer = false;
-        let nickname = 'Player';
-        let gameStarted = false;
-        let socket;
+        let gameStarted = true;
 
-        // Menu
-        document.getElementById('singleBtn').addEventListener('click', () => {
-            isMultiplayer = false;
-            document.getElementById('menu').style.display = 'none';
-            document.getElementById('ui').style.display = 'block';
-            startGame();
-        });
-        document.getElementById('multiBtn').addEventListener('click', () => {
-            document.getElementById('multiOptions').style.display = 'block';
-        });
-        document.getElementById('startMultiBtn').addEventListener('click', () => {
-            nickname = document.getElementById('nickname').value || 'Player';
-            isMultiplayer = true;
-            document.getElementById('menu').style.display = 'none';
-            document.getElementById('ui').style.display = 'block';
-            startGame();
-        });
-        document.getElementById('settingsBtn').addEventListener('click', () => {
-            alert('Settings not implemented yet');
-        });
-
-        function startGame() {
-            gameStarted = true;
-            console.log('Game started, multiplayer:', isMultiplayer);
-            if (isMultiplayer) {
-                socket = io(window.location.origin);
-                setupSocket();
-            }
-            // Ensure canvas is visible
-            renderer.domElement.style.display = 'block';
-            // Start sending position
-            setInterval(sendPosition, 50);
-        }
+        // Start game immediately
+        console.log('Game started');
+        // Ensure canvas is visible
+        renderer.domElement.style.display = 'block';
+        // Start sending position (dummy for single)
+        setInterval(sendPosition, 50);
 
         function setupSocket() {
             // Socket events
@@ -339,16 +299,7 @@
             div.scrollTop = div.scrollHeight;
         }
 
-        document.getElementById('chatInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                const msg = e.target.value;
-                if (msg.trim()) {
-                    if (isMultiplayer) socket.emit('chatMessage', msg);
-                    addChatMessage('You: ' + msg);
-                    e.target.value = '';
-                }
-            }
-        });
+        // Chat disabled for single player
 
         // Socket events
         socket.on('init', (players) => {
@@ -496,14 +447,7 @@
         }
 
         function sendPosition() {
-            if (!isMultiplayer || !socket) return;
-            const pos = isInCar ? currentCar.position : player.position;
-            socket.emit('updatePosition', {
-                position: pos,
-                state: isInCar ? 'inCar' : 'pedestrian',
-                carId: currentCar ? cars.indexOf(currentCar) : null,
-                nickname: nickname
-            });
+            // Dummy for single player
         }
 
         function startGame() {
